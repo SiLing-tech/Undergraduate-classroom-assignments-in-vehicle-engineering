@@ -1,2 +1,3 @@
-# Lianliankan_demo
-这个项目是一个机械制造基础的课堂作业小游戏，主要玩法就是连上相同的色块，使色块上的铸造专业名词的中英文相对应。
+# 车辆工程本科课堂作业
+#Vehicle Engineering Bachelor's Course Homework
+这个项目是我本科时期的课堂作业的合集
