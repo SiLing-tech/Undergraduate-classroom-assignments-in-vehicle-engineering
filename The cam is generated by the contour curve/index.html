@@ -1,0 +1,1245 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>凸轮轮廓曲线生成器 — Cam Profile Generator</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Microsoft YaHei', 'Arial', sans-serif;
+  background: #fbf3dd;
+  color: #171103;
+  min-height: 100vh;
+}
+
+header {
+  text-align: center;
+  padding: 18px 16px 10px;
+}
+header h1 {
+  font-size: 1.5rem;
+  color: #171103;
+  margin-bottom: 4px;
+}
+header .subtitle {
+  font-size: 0.85rem;
+  color: #766f5c;
+}
+
+.main-container {
+  display: flex;
+  gap: 20px;
+  padding: 0 20px 30px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* ---- Left Panel ---- */
+.control-panel {
+  flex: 0 0 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.param-card, .segment-card, .options-card {
+  background: #fff;
+  border: 1px solid #ddd6c5;
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+
+.param-card h3, .segment-card h3, .options-card h3 {
+  font-size: 0.95rem;
+  color: #766f5c;
+  margin-bottom: 10px;
+  border-bottom: 1px solid #e8e0ce;
+  padding-bottom: 6px;
+}
+
+.param-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.param-row label {
+  flex: 0 0 130px;
+  font-size: 0.88rem;
+  color: #333;
+}
+.param-row input {
+  flex: 1;
+  padding: 5px 8px;
+  border: 1px solid #ccc8b8;
+  border-radius: 4px;
+  font-size: 0.88rem;
+  font-family: inherit;
+  width: 100%;
+}
+.param-row .unit {
+  flex: 0 0 28px;
+  text-align: center;
+  font-size: 0.78rem;
+  color: #999;
+}
+
+/* Segment table */
+.segment-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+.segment-table th {
+  background: #f5f0e5;
+  color: #766f5c;
+  padding: 5px 4px;
+  font-weight: 600;
+  text-align: center;
+  font-size: 0.75rem;
+}
+.segment-table td {
+  padding: 4px 3px;
+  text-align: center;
+}
+.segment-table input, .segment-table select {
+  width: 100%;
+  padding: 4px 4px;
+  border: 1px solid #ccc8b8;
+  border-radius: 3px;
+  font-size: 0.8rem;
+  font-family: inherit;
+}
+.segment-table input.cust-expr {
+  font-size: 0.78rem;
+  font-style: italic;
+}
+.segment-table input:disabled {
+  background: #f0ede5;
+  color: #aaa;
+}
+.segment-table .editable-val {
+  display: inline-block;
+  padding: 3px 5px;
+  border-radius: 3px;
+  cursor: default;
+  min-width: 40px;
+}
+.segment-table .editable-val:hover {
+  background: #f0ede5;
+  outline: 1px dashed #ccc8b8;
+}
+.segment-table .del-btn {
+  background: #c0392b;
+  color: #fff;
+  border: none;
+  border-radius: 3px;
+  padding: 2px 6px;
+  cursor: pointer;
+  font-size: 0.75rem;
+}
+.segment-table .del-btn:hover { background: #a93226; }
+
+.seg-btns {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.seg-btns button {
+  flex: 1;
+  padding: 7px 0;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-family: inherit;
+  color: #fbf3dd;
+}
+.btn-add { background: #27ae60; }
+.btn-add:hover { background: #219a52; }
+.btn-del { background: #c0392b; }
+.btn-del:hover { background: #a93226; }
+.btn-reset { background: #766f5c; }
+.btn-reset:hover { background: #5f5a4b; }
+
+/* Display options */
+.options-card label {
+  display: block;
+  font-size: 0.88rem;
+  margin: 4px 0;
+  cursor: pointer;
+}
+
+/* Validation messages */
+.validation-area {
+  font-size: 0.82rem;
+  min-height: 20px;
+}
+.validation-area .error { color: #c0392b; }
+.validation-area .warning { color: #e67e22; }
+.validation-area .info { color: #27ae60; }
+
+/* ---- Right Panel ---- */
+.viz-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.canvas-card {
+  background: #fff;
+  border: 1px solid #ddd6c5;
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  justify-content: center;
+}
+.canvas-card canvas {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0,0,0,0.45); z-index: 1000;
+  display: flex; align-items: center; justify-content: center;
+}
+.modal-box {
+  background: #fff; border-radius: 10px; padding: 22px 26px;
+  max-width: 440px; width: 90%; box-shadow: 0 6px 24px rgba(0,0,0,0.25);
+}
+.modal-box h3 { font-size: 1rem; color: #333; margin: 0 0 4px; }
+
+/* Responsive */
+@media (max-width: 800px) {
+  .main-container {
+    flex-direction: column;
+    padding: 0 10px 20px;
+  }
+  .control-panel { flex: auto; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>凸轮轮廓曲线生成器 Cam Profile Generator</h1>
+  <div class="subtitle">由从动件运动规律生成凸轮轮廓 &mdash; Generate cam profile from follower motion curve</div>
+</header>
+
+<div class="main-container">
+
+  <!-- ===== Left Panel ===== -->
+  <div class="control-panel">
+
+    <div class="param-card">
+      <h3>基本参数 Basic Parameters</h3>
+      <div class="param-row">
+        <label for="rb">基圆半径 r<sub>b</sub>:</label>
+        <input type="number" id="rb" value="40" min="1" step="1">
+        <span class="unit">mm</span>
+      </div>
+      <div class="param-row">
+        <label for="ecc">偏心距 e:</label>
+        <input type="number" id="ecc" value="5" min="0" step="0.5">
+        <span class="unit">mm</span>
+      </div>
+      <div class="param-row">
+        <label for="rr">滚子半径 r<sub>r</sub>:</label>
+        <input type="number" id="rr" value="10" min="0" step="0.5">
+        <span class="unit">mm</span>
+      </div>
+      <div class="param-row" style="font-size:0.75rem; color:#999; margin-bottom:0;">
+        rr=0 为尖顶从动件；rr&gt;0 时轮廓由节曲线向内偏移 rr 生成
+      </div>
+      <div class="param-row" style="margin-top:4px;">
+        <label for="clockwise">旋转方向:</label>
+        <button id="clockwiseBtn" style="flex:1;padding:5px 0;border:1px solid #ccc8b8;border-radius:4px;cursor:pointer;font-family:inherit;font-size:0.85rem;background:#f5f0e5;">
+          🔄 逆时针 CCW
+        </button>
+      </div>
+    </div>
+
+    <div class="segment-card">
+      <h3>分段运动规律 Motion Segments (S=f(&theta;))</h3>
+      <table class="segment-table" id="segmentTable">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>起始角<br>Start (&deg;)</th>
+            <th>终止角<br>End (&deg;)</th>
+            <th>升程<br>Lift (mm)</th>
+            <th>运动规律<br>Motion Law</th>
+            <th>自定义表达式<br>Custom Expr</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="segmentBody"></tbody>
+      </table>
+      <div class="seg-btns">
+        <button class="btn-add" id="addSegment">+ 添加段 Add</button>
+        <button class="btn-del" id="removeSegment">- 删除末段 Remove</button>
+        <button class="btn-reset" id="resetSegments">重置 Reset</button>
+      </div>
+      <div style="margin-top:6px; font-size:0.78rem; color:#766f5c;" id="cumDisp"></div>
+    </div>
+
+    <div class="options-card">
+      <h3>显示选项 Display Options</h3>
+      <label><input type="checkbox" id="showPitch" checked> 显示节曲线 Show Pitch Curve</label>
+      <label><input type="checkbox" id="showBaseCircle" checked> 显示基圆 Show Base Circle</label>
+    </div>
+
+    <div class="validation-area" id="validationArea"></div>
+
+  </div>
+
+  <!-- ===== Right Panel ===== -->
+  <div class="viz-panel">
+    <div class="canvas-card">
+      <canvas id="camCanvas" width="560" height="560"></canvas>
+    </div>
+    <div class="canvas-card">
+      <canvas id="dispCanvas" width="560" height="220"></canvas>
+    </div>
+  </div>
+
+</div>
+
+<!-- Expression Edit Modal -->
+<div class="modal-overlay" id="exprModal" style="display:none;">
+  <div class="modal-box">
+    <h3>编辑自定义表达式 Edit Custom Expression</h3>
+    <p style="font-size:0.82rem;color:#766f5c;margin:6px 0;">
+      输入含 <b>phi</b> 的表达式，phi &isin; [0,1]，应满足 f(0)=0, f(1)=1
+    </p>
+    <input type="text" id="exprModalInput" placeholder="例: 3*phi^2 - 2*phi^3" style="width:100%;padding:8px;border:1px solid #ccc8b8;border-radius:4px;font-size:0.9rem;font-family:Consolas,monospace;">
+    <div id="exprModalError" style="color:#c0392b;font-size:0.78rem;min-height:18px;margin-top:4px;"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px;">
+      <button id="exprModalCancel" style="padding:7px 18px;border:1px solid #ccc;border-radius:4px;cursor:pointer;font-family:inherit;background:#f5f0e5;">取消 Cancel</button>
+      <button id="exprModalConfirm" style="padding:7px 18px;border:none;border-radius:4px;cursor:pointer;font-family:inherit;background:#27ae60;color:#fff;">确认 Confirm</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// A. GLOBAL STATE
+// ============================================================
+const DEFAULT_SEGMENTS = [
+  { start: 0,   end: 90,  lift: 20,  law: 'cycloidal',      customExpr: '' },
+  { start: 90,  end: 150, lift: 0,   law: 'dwell',           customExpr: '' },
+  { start: 150, end: 270, lift: -20, law: 'cycloidal',      customExpr: '' },
+  { start: 270, end: 360, lift: 0,   law: 'dwell',           customExpr: '' },
+];
+
+let segments = JSON.parse(JSON.stringify(DEFAULT_SEGMENTS));
+let clockwise = false; // 默认逆时针
+
+// ============================================================
+// B. MOTION LAW DEFINITIONS
+// ============================================================
+
+// Each law: fn(phi) where phi in [0,1], returns displacement fraction [0,1]
+const MOTION_LAWS = {
+  cycloidal: {
+    name: '摆线运动 Cycloidal',
+    fn: (phi) => phi - Math.sin(2 * Math.PI * phi) / (2 * Math.PI),
+    d1: (phi) => 1 - Math.cos(2 * Math.PI * phi),
+  },
+  simpleHarmonic: {
+    name: '简谐运动 Simple Harmonic',
+    fn: (phi) => (1 - Math.cos(Math.PI * phi)) / 2,
+    d1: (phi) => (Math.PI / 2) * Math.sin(Math.PI * phi),
+  },
+  constantAccel: {
+    name: '等加速等减速 Const. Accel/Decel',
+    fn: (phi) => phi <= 0.5 ? 2 * phi * phi : 1 - 2 * (1 - phi) * (1 - phi),
+    d1: (phi) => phi <= 0.5 ? 4 * phi : 4 * (1 - phi),
+  },
+  constantVel: {
+    name: '等速运动 Constant Velocity',
+    fn: (phi) => phi,
+    d1: (phi) => 1,
+  },
+  dwell: {
+    name: '停歇 Dwell',
+    fn: (phi) => 0,
+    d1: (phi) => 0,
+  },
+};
+
+// Compile a custom expression string into a function
+function compileCustomExpr(exprStr) {
+  // Safety: only allow numbers, phi, operators, Math.*, parentheses, whitespace
+  const sanitized = exprStr.trim();
+  if (!sanitized) return null;
+
+  // Check for disallowed patterns (no function calls except Math.*)
+  const allowed = /^[\d\s\+\-\*\/\%\(\)\.\,\phi Math\.\^]+$/;
+  // Build a practical check: allow known safe tokens
+  const dangerous = /[^0-9\s\+\-\*\/\%\(\)\.\,\^\w]/;
+  if (dangerous.test(sanitized.replace(/Math\.\w+/g, '').replace(/phi/g, ''))) {
+    return null;
+  }
+  // Block access to dangerous globals via constructor
+  const blocked = /\b(constructor|prototype|__proto__|eval|Function|window|document|global|this)\b/;
+  if (blocked.test(sanitized)) return null;
+
+  // Replace ^ with ** for exponentiation
+  let expr = sanitized.replace(/\^/g, '**');
+
+  try {
+    const fn = new Function('phi', `"use strict"; return (${expr});`);
+    // Test evaluation
+    const v0 = fn(0);
+    const v1 = fn(1);
+    if (typeof v0 !== 'number' || typeof v1 !== 'number' || !isFinite(v0) || !isFinite(v1)) {
+      return null;
+    }
+    return { fn, v0, v1 };
+  } catch (e) {
+    return null;
+  }
+}
+
+// Get the displacement function for a segment
+function getSegmentFn(seg) {
+  if (seg.law === 'custom') {
+    const compiled = compileCustomExpr(seg.customExpr);
+    if (!compiled) return null;
+    return {
+      fn: compiled.fn,
+      isValid: true,
+      boundaryNote: (Math.abs(compiled.v0) > 0.001 || Math.abs(compiled.v1 - 1) > 0.001)
+        ? `f(0)=${compiled.v0.toFixed(3)}, f(1)=${compiled.v1.toFixed(3)} (期望 0, 1)`
+        : null,
+    };
+  }
+  const law = MOTION_LAWS[seg.law];
+  if (!law) return null;
+  return { fn: law.fn, isValid: true, boundaryNote: null };
+}
+
+// ============================================================
+// C. PIECEWISE FUNCTION EVALUATOR
+// ============================================================
+
+function evaluateS(thetaDeg, segs) {
+  // Convert degrees to internal representation, find segment, evaluate
+  let cumulativeS = 0;
+  for (const seg of segs) {
+    if (thetaDeg >= seg.start && thetaDeg <= seg.end) {
+      const range = seg.end - seg.start;
+      const phi = range > 0 ? (thetaDeg - seg.start) / range : 0;
+      const fnInfo = getSegmentFn(seg);
+      if (!fnInfo) return cumulativeS; // fallback
+      return cumulativeS + seg.lift * fnInfo.fn(phi);
+    }
+    cumulativeS += seg.lift;
+  }
+  // Should not reach here for valid segments covering 0-360
+  return cumulativeS;
+}
+
+function evaluateSd(thetaDeg, segs) {
+  // Returns { s, ds_dtheta } for pressure angle computation
+  let cumulativeS = 0;
+  for (const seg of segs) {
+    if (thetaDeg >= seg.start && thetaDeg <= seg.end) {
+      const range = seg.end - seg.start;
+      const phi = range > 0 ? (thetaDeg - seg.start) / range : 0;
+      if (seg.law === 'custom') {
+        const compiled = compileCustomExpr(seg.customExpr);
+        if (!compiled) return { s: cumulativeS, ds: 0 };
+        // Numerical derivative for custom
+        const h = 0.0001;
+        const sP = compiled.fn(Math.min(1, phi + h));
+        const sM = compiled.fn(Math.max(0, phi - h));
+        const ds_dphi = (sP - sM) / Math.min(2 * h, 1);
+        const ds_dtheta = range > 0 ? seg.lift * ds_dphi / range : 0;
+        return { s: cumulativeS + seg.lift * compiled.fn(phi), ds: ds_dtheta };
+      }
+      const law = MOTION_LAWS[seg.law];
+      if (!law) return { s: cumulativeS, ds: 0 };
+      const ds_dphi = law.d1(phi);
+      const ds_dtheta = range > 0 ? seg.lift * ds_dphi / range : 0;
+      return { s: cumulativeS + seg.lift * law.fn(phi), ds: ds_dtheta };
+    }
+    cumulativeS += seg.lift;
+  }
+  return { s: cumulativeS, ds: 0 };
+}
+
+function buildDisplacementData(segs, nSteps) {
+  const data = [];
+  for (let i = 0; i < nSteps; i++) {
+    const thetaDeg = (i / nSteps) * 360;
+    const { s, ds } = evaluateSd(thetaDeg, segs);
+    data.push({ theta: thetaDeg * Math.PI / 180, thetaDeg, s, ds_dtheta: ds });
+  }
+  return data;
+}
+
+// ============================================================
+// D. CAM GEOMETRY ENGINE
+// ============================================================
+
+function computeCamGeometry(rb, e, rr, segs, clockwise) {
+  const N = 720;
+  const s0 = Math.sqrt((rb + rr) * (rb + rr) - e * e);
+  const dispData = buildDisplacementData(segs, N);
+
+  // 1. 节曲线（滚子圆心轨迹）—— 反转法
+  // CCW (逆时针): x = e·cosθ - a·sinθ, y = e·sinθ + a·cosθ
+  // CW  (顺时针): θ → -θ, 即 x = e·cosθ + a·sinθ, y = -e·sinθ + a·cosθ
+  const pitchPoints = [];
+  for (const d of dispData) {
+    const theta = d.theta;
+    const a = s0 + d.s;
+    let x, y;
+    if (clockwise) {
+      x = e * Math.cos(theta) + a * Math.sin(theta);
+      y = -e * Math.sin(theta) + a * Math.cos(theta);
+    } else {
+      x = e * Math.cos(theta) - a * Math.sin(theta);
+      y = e * Math.sin(theta) + a * Math.cos(theta);
+    }
+    pitchPoints.push({ theta, thetaDeg: d.thetaDeg, s: d.s, x, y, r: Math.sqrt(e * e + a * a) });
+  }
+
+  // 2. 实际轮廓 = 节曲线向内偏移 rr（内包络）
+  let profilePoints;
+  if (rr <= 0.001) {
+    profilePoints = pitchPoints.map(p => ({ x: p.x, y: p.y, thetaDeg: p.thetaDeg }));
+  } else {
+    profilePoints = [];
+    const dtheta = (2 * Math.PI) / N;
+    for (let i = 0; i < pitchPoints.length; i++) {
+      const p = pitchPoints[i];
+      // 切线方向：用邻点中心差分
+      const prev = pitchPoints[(i - 1 + pitchPoints.length) % pitchPoints.length];
+      const next = pitchPoints[(i + 1) % pitchPoints.length];
+      const dx = (next.x - prev.x) / (2 * dtheta);
+      const dy = (next.y - prev.y) / (2 * dtheta);
+      const norm = Math.sqrt(dx * dx + dy * dy);
+      if (norm < 1e-10) {
+        profilePoints.push({ x: p.x, y: p.y, thetaDeg: p.thetaDeg });
+        continue;
+      }
+      // 外法线（CCW曲线）：n = (dy/dθ, -dx/dθ)/|n|
+      // 向内偏移得实际轮廓：profile = pitch - rr * n
+      const nx = dy / norm;
+      const ny = -dx / norm;
+      profilePoints.push({
+        x: p.x - rr * nx,
+        y: p.y - rr * ny,
+        thetaDeg: p.thetaDeg,
+      });
+    }
+  }
+
+  // 自动缩放范围
+  let maxR = 0;
+  for (const p of profilePoints) {
+    const r = Math.sqrt(p.x * p.x + p.y * p.y);
+    if (r > maxR) maxR = r;
+  }
+  // 确保基圆和节曲线可见
+  for (const p of pitchPoints) {
+    if (p.r > maxR) maxR = p.r;
+  }
+  if (maxR < rb + rr) maxR = rb + rr;
+
+  // 压力角检查（在节曲线上）
+  const pressureWarnings = [];
+  for (let i = 0; i < dispData.length; i++) {
+    const d = dispData[i];
+    const denom = d.s + s0;
+    if (Math.abs(denom) > 0.001) {
+      const tanAlpha = Math.abs(d.ds_dtheta - e) / denom;
+      const alpha = Math.atan(tanAlpha) * 180 / Math.PI;
+      if (alpha > 30) {
+        pressureWarnings.push({
+          thetaDeg: d.thetaDeg.toFixed(1),
+          alpha: alpha.toFixed(1),
+        });
+      }
+    }
+  }
+
+  return {
+    pitchPoints,
+    profilePoints,
+    dispData,
+    maxR,
+    s0,
+    pressureWarnings,
+  };
+}
+
+// ============================================================
+// E. CANVAS RENDERER
+// ============================================================
+
+function renderCamCanvas(canvas, geometry, rb, options) {
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width;
+  const H = canvas.height;
+  const cx = W / 2;
+  const cy = H / 2;
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, W, H);
+
+  // Scale: fit maxR into canvas with 10% padding
+  const scale = (Math.min(W, H) / 2 * 0.88) / geometry.maxR;
+
+  function toCanvas(mx, my) {
+    return [cx + scale * mx, cy - scale * my];
+  }
+
+  // Grid lines (every 20mm)
+  ctx.strokeStyle = '#f0ede5';
+  ctx.lineWidth = 0.5;
+  const gridStep = 20;
+  const gridExtent = Math.ceil(geometry.maxR / gridStep) * gridStep;
+  for (let g = -gridExtent; g <= gridExtent; g += gridStep) {
+    const [gx, gy] = toCanvas(g, 0);
+    ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, cy - scale * g); ctx.lineTo(W, cy - scale * g); ctx.stroke();
+  }
+
+  // Axis crosshairs
+  ctx.strokeStyle = '#cccccc';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, cy); ctx.lineTo(W, cy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, H); ctx.stroke();
+
+  // Base circle
+  if (options.showBaseCircle) {
+    const bcr = scale * rb;
+    ctx.strokeStyle = '#999999';
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    ctx.arc(cx, cy, bcr, 0, 2 * Math.PI);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = '#999999';
+    ctx.font = '11px "Microsoft YaHei", Arial';
+    ctx.fillText('rb=' + rb, cx + bcr + 4, cy - 4);
+  }
+
+  // Pitch curve (滚子圆心轨迹)
+  if (options.showPitch && geometry.pitchPoints && geometry.pitchPoints.length > 1) {
+    ctx.strokeStyle = '#3498db';
+    ctx.lineWidth = 1.3;
+    ctx.lineJoin = 'round';
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    const [px0, py0] = toCanvas(geometry.pitchPoints[0].x, geometry.pitchPoints[0].y);
+    ctx.moveTo(px0, py0);
+    for (let i = 1; i < geometry.pitchPoints.length; i++) {
+      const [px, py] = toCanvas(geometry.pitchPoints[i].x, geometry.pitchPoints[i].y);
+      ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Actual cam profile (凸轮轮廓)
+  if (geometry.profilePoints.length > 1) {
+    ctx.strokeStyle = '#c0392b';
+    ctx.lineWidth = 2.8;
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    const [px0, py0] = toCanvas(geometry.profilePoints[0].x, geometry.profilePoints[0].y);
+    ctx.moveTo(px0, py0);
+    for (let i = 1; i < geometry.profilePoints.length; i++) {
+      const [px, py] = toCanvas(geometry.profilePoints[i].x, geometry.profilePoints[i].y);
+      ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.stroke();
+  }
+
+  // Cam center mark
+  ctx.fillStyle = '#333333';
+  ctx.beginPath();
+  ctx.arc(cx, cy, 4, 0, 2 * Math.PI);
+  ctx.fill();
+
+  // Shaft bore hint
+  const boreR = scale * (rb * 0.25);
+  if (boreR > 5) {
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#555555';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(cx, cy, boreR, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  // Legend
+  ctx.font = '11px "Microsoft YaHei", Arial';
+  const lx = W - 160;
+  const ly = 20;
+  // Actual profile
+  ctx.fillStyle = '#c0392b';
+  ctx.fillRect(lx, ly, 18, 3);
+  ctx.fillStyle = '#333';
+  ctx.fillText('凸轮轮廓 Cam Profile', lx + 24, ly + 4);
+  // Pitch curve (if shown)
+  if (options.showPitch && geometry.pitchPoints && geometry.pitchPoints.length > 1) {
+    ctx.fillStyle = '#3498db';
+    ctx.fillRect(lx, ly + 18, 18, 3);
+    ctx.fillStyle = '#333';
+    ctx.fillText('节曲线 Pitch Curve', lx + 24, ly + 22);
+  }
+}
+
+function renderDispCanvas(canvas, geometry, segs) {
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width;
+  const H = canvas.height;
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, W, H);
+
+  const margin = { top: 18, right: 20, bottom: 32, left: 50 };
+  const pw = W - margin.left - margin.right;
+  const ph = H - margin.top - margin.bottom;
+
+  // Find S range
+  let sMin = Infinity, sMax = -Infinity;
+  for (const d of geometry.dispData) {
+    if (d.s < sMin) sMin = d.s;
+    if (d.s > sMax) sMax = d.s;
+  }
+  const sRange = sMax - sMin || 1;
+  const sPad = sRange * 0.1;
+
+  function toPlot(thetaDeg, s) {
+    const px = margin.left + (thetaDeg / 360) * pw;
+    const py = margin.top + ph - ((s - sMin + sPad) / (sRange + 2 * sPad)) * ph;
+    return [px, py];
+  }
+
+  // Background
+  ctx.fillStyle = '#fafaf7';
+  ctx.fillRect(margin.left, margin.top, pw, ph);
+
+  // Axes
+  ctx.strokeStyle = '#666';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(margin.left, margin.top); ctx.lineTo(margin.left, margin.top + ph); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(margin.left, margin.top + ph); ctx.lineTo(margin.left + pw, margin.top + ph); ctx.stroke();
+
+  // X-axis ticks
+  ctx.fillStyle = '#555';
+  ctx.font = '10px "Microsoft YaHei", Arial';
+  for (let deg = 0; deg <= 360; deg += 60) {
+    const [px, py] = toPlot(deg, sMin);
+    ctx.beginPath(); ctx.moveTo(px, margin.top + ph); ctx.lineTo(px, margin.top + ph + 5); ctx.stroke();
+    ctx.fillText(deg + '°', px - 12, margin.top + ph + 18);
+  }
+
+  // Y-axis ticks
+  const yTicks = 5;
+  for (let i = 0; i <= yTicks; i++) {
+    const sVal = (sMin - sPad) + (sRange + 2 * sPad) * (i / yTicks);
+    const [, py] = toPlot(0, sVal);
+    ctx.beginPath(); ctx.moveTo(margin.left - 4, py); ctx.lineTo(margin.left, py); ctx.stroke();
+    ctx.textAlign = 'right';
+    ctx.fillText(sVal.toFixed(1), margin.left - 8, py + 4);
+    ctx.textAlign = 'start';
+  }
+
+  // Grid lines
+  ctx.strokeStyle = '#e8e8e8';
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= yTicks; i++) {
+    const sVal = (sMin - sPad) + (sRange + 2 * sPad) * (i / yTicks);
+    const [, py] = toPlot(0, sVal);
+    ctx.beginPath(); ctx.moveTo(margin.left, py); ctx.lineTo(margin.left + pw, py); ctx.stroke();
+  }
+
+  // Segment boundary markers and shading
+  const segColors = ['#e8f4e8', '#f5f0e5', '#fce4e4', '#e8f0f8', '#fef9e7', '#f0e8f4'];
+  for (let si = 0; si < segs.length; si++) {
+    const seg = segs[si];
+    const [x1, yTop] = toPlot(seg.start, sMax + sPad);
+    const [x2, yBot] = toPlot(seg.end, sMin - sPad);
+    ctx.fillStyle = segColors[si % segColors.length];
+    ctx.fillRect(x1, yTop, x2 - x1, ph);
+
+    // Boundary line
+    if (si > 0) {
+      ctx.strokeStyle = '#ccc';
+      ctx.lineWidth = 0.8;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.moveTo(x1, margin.top); ctx.lineTo(x1, margin.top + ph); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+
+  // Draw displacement curve — one colored segment at a time
+  if (geometry.dispData.length > 1) {
+    const segCurveColors = ['#1e7e34', '#1a5276', '#b03a2e', '#6c3483', '#b9770e', '#117a65'];
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+
+    let segIdx = 0;
+    let pathStarted = false;
+
+    for (let i = 0; i < geometry.dispData.length; i++) {
+      const d = geometry.dispData[i];
+
+      while (segIdx < segs.length && d.thetaDeg > segs[segIdx].end + 0.01) {
+        if (pathStarted) { ctx.stroke(); pathStarted = false; }
+        segIdx++;
+      }
+      if (segIdx >= segs.length) segIdx = segs.length - 1;
+
+      const color = segCurveColors[segIdx % segCurveColors.length];
+      const [px, py] = toPlot(d.thetaDeg, d.s);
+
+      if (!pathStarted) {
+        // If crossing into a new segment, start at the exact boundary
+        if (i > 0 && segIdx > 0) {
+          const prevD = geometry.dispData[i - 1];
+          if (prevD.thetaDeg < segs[segIdx].start && d.thetaDeg >= segs[segIdx].start) {
+            const sAtBoundary = evaluateS(segs[segIdx].start, segs);
+            const [bx, by] = toPlot(segs[segIdx].start, sAtBoundary);
+            ctx.strokeStyle = color;
+            ctx.beginPath();
+            ctx.moveTo(bx, by);
+            ctx.lineTo(px, py);
+            pathStarted = true;
+            continue;
+          }
+        }
+        ctx.strokeStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(px, py);
+        pathStarted = true;
+      } else {
+        ctx.lineTo(px, py);
+      }
+    }
+    if (pathStarted) ctx.stroke();
+  }
+
+  // Axis labels
+  ctx.fillStyle = '#555';
+  ctx.font = '11px "Microsoft YaHei", Arial';
+  ctx.fillText('θ (deg)', margin.left + pw / 2 - 22, H - 4);
+  ctx.save();
+  ctx.translate(12, margin.top + ph / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText('S (mm)', -20, 0);
+  ctx.restore();
+
+  // Legend for segments
+  const segCurveColors = ['#1e7e34', '#1a5276', '#b03a2e', '#6c3483', '#b9770e', '#117a65'];
+  ctx.font = '9px "Microsoft YaHei", Arial';
+  for (let si = 0; si < segs.length; si++) {
+    const seg = segs[si];
+    const midDeg = (seg.start + seg.end) / 2;
+    const midS = evaluateS(midDeg, segs);
+    const [lx, ly] = toPlot(midDeg, midS);
+    const lawName = seg.law === 'custom' ? '自定义' : (MOTION_LAWS[seg.law] ? MOTION_LAWS[seg.law].name.split(' ')[0] : '?');
+    ctx.fillStyle = segCurveColors[si % segCurveColors.length];
+    ctx.fillText(lawName, lx - 20, ly - 6);
+  }
+}
+
+// ============================================================
+// F. UI CONTROLLER
+// ============================================================
+
+const segmentBody = document.getElementById('segmentBody');
+const validationArea = document.getElementById('validationArea');
+const cumDispEl = document.getElementById('cumDisp');
+
+// Create a cell that displays as text; double-click to edit, Enter to confirm
+function makeEditableCell(value, opts) {
+  const td = document.createElement('td');
+  const span = document.createElement('span');
+  span.className = 'editable-val';
+  span.textContent = opts.format ? opts.format(value) : value;
+  span.title = opts.readonly ? '' : '双击编辑 Double-click to edit';
+  td.appendChild(span);
+
+  if (opts.readonly) return td;
+
+  let editing = false;
+
+  function startEdit() {
+    if (editing) return;
+    editing = true;
+
+    const input = document.createElement('input');
+    input.type = opts.isText ? 'text' : 'number';
+    input.value = value;
+    if (opts.min !== undefined) input.min = opts.min;
+    if (opts.max !== undefined) input.max = opts.max;
+    if (opts.step !== undefined) input.step = opts.step;
+    input.style.width = opts.width || '52px';
+    if (opts.isText) input.style.fontSize = '0.78rem';
+
+    function finishEdit(accept) {
+      if (!editing) return;
+      editing = false;
+      if (!accept) {
+        if (input.parentNode === td) td.replaceChild(span, input);
+        return;
+      }
+      const newVal = opts.isText ? input.value.trim() : (parseFloat(input.value) || 0);
+      opts.onChange(newVal);
+      if (input.parentNode === td) {
+        span.textContent = opts.format ? opts.format(newVal) : newVal;
+        td.replaceChild(span, input);
+      }
+    }
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); finishEdit(true); }
+      if (e.key === 'Escape') { e.preventDefault(); finishEdit(false); }
+    });
+    input.addEventListener('blur', () => finishEdit(true));
+
+    td.replaceChild(input, span);
+    input.focus();
+    input.select();
+  }
+
+  span.addEventListener('dblclick', startEdit);
+  return td;
+}
+
+// ---- Expression Modal ----
+let modalTargetSeg = null; // which segment the modal is editing
+
+function openExprModal(seg) {
+  modalTargetSeg = seg;
+  document.getElementById('exprModalInput').value = seg.customExpr || '';
+  document.getElementById('exprModalError').textContent = '';
+  document.getElementById('exprModal').style.display = 'flex';
+  document.getElementById('exprModalInput').focus();
+}
+
+function closeExprModal(accept) {
+  document.getElementById('exprModal').style.display = 'none';
+  if (accept && modalTargetSeg) {
+    const raw = document.getElementById('exprModalInput').value.trim();
+    const compiled = compileCustomExpr(raw);
+    if (!compiled) {
+      document.getElementById('exprModalError').textContent = '表达式语法错误 Expression syntax error';
+      document.getElementById('exprModal').style.display = 'flex';
+      document.getElementById('exprModalInput').focus();
+      return;
+    }
+    modalTargetSeg.customExpr = raw;
+    modalTargetSeg = null;
+    onSegmentChange();
+  }
+  modalTargetSeg = null;
+}
+
+document.getElementById('exprModalCancel').addEventListener('click', () => closeExprModal(false));
+document.getElementById('exprModalConfirm').addEventListener('click', () => closeExprModal(true));
+document.getElementById('exprModalInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); closeExprModal(true); }
+  if (e.key === 'Escape') { e.preventDefault(); closeExprModal(false); }
+});
+
+function buildSegmentTable() {
+  segmentBody.innerHTML = '';
+  segments.forEach((seg, i) => {
+    const tr = document.createElement('tr');
+
+    // Row number
+    const tdNum = document.createElement('td');
+    tdNum.textContent = i + 1;
+    tr.appendChild(tdNum);
+
+    // Start angle (editable only for first row)
+    tr.appendChild(makeEditableCell(seg.start, {
+      readonly: i > 0,
+      min: 0, max: 360, step: 1, width: '52px',
+      onChange: (v) => { seg.start = v; onSegmentChange(); }
+    }));
+
+    // End angle
+    tr.appendChild(makeEditableCell(seg.end, {
+      min: 0, max: 360, step: 1, width: '52px',
+      onChange: (v) => { seg.end = v; onSegmentChange(); }
+    }));
+
+    // Lift
+    tr.appendChild(makeEditableCell(seg.lift, {
+      step: 0.5, width: '54px',
+      format: (v) => (v >= 0 ? '+' : '') + v.toFixed(1),
+      onChange: (v) => { seg.lift = v; onSegmentChange(); }
+    }));
+
+    // Motion law dropdown
+    const tdLaw = document.createElement('td');
+    const selLaw = document.createElement('select');
+    selLaw.style.width = '68px';
+    for (const [key, law] of Object.entries(MOTION_LAWS)) {
+      const opt = document.createElement('option');
+      opt.value = key;
+      opt.textContent = law.name.split(' ')[0];
+      if (key === seg.law) opt.selected = true;
+      selLaw.appendChild(opt);
+    }
+    const optCustom = document.createElement('option');
+    optCustom.value = 'custom';
+    optCustom.textContent = '自定义';
+    if (seg.law === 'custom') optCustom.selected = true;
+    selLaw.appendChild(optCustom);
+
+    selLaw.addEventListener('change', () => {
+      seg.law = selLaw.value;
+      seg.customExpr = '';
+      onSegmentChange();
+    });
+    tdLaw.appendChild(selLaw);
+    tr.appendChild(tdLaw);
+
+    // Custom expression — double-click opens modal when law is 'custom'
+    const tdExpr = document.createElement('td');
+    const spanExpr = document.createElement('span');
+    spanExpr.className = 'editable-val';
+    spanExpr.textContent = seg.customExpr || (seg.law === 'custom' ? '(双击编辑)' : '(空)');
+    spanExpr.title = seg.law === 'custom' ? '双击编辑表达式 Double-click to edit' : '';
+    spanExpr.style.fontStyle = seg.law === 'custom' ? 'italic' : 'normal';
+    spanExpr.style.color = seg.law === 'custom' ? '#1a5276' : '#aaa';
+    if (seg.law === 'custom') {
+      spanExpr.addEventListener('dblclick', () => { openExprModal(seg); });
+    }
+    tdExpr.appendChild(spanExpr);
+    tr.appendChild(tdExpr);
+
+    // Delete button
+    const tdDel = document.createElement('td');
+    const btnDel = document.createElement('button');
+    btnDel.className = 'del-btn';
+    btnDel.textContent = '×';
+    btnDel.title = '删除此段';
+    btnDel.addEventListener('click', () => {
+      if (segments.length <= 1) return;
+      segments.splice(i, 1);
+      onSegmentChange();
+    });
+    tdDel.appendChild(btnDel);
+    tr.appendChild(tdDel);
+
+    segmentBody.appendChild(tr);
+  });
+
+  updateCumDisp();
+}
+
+function updateCumDisp() {
+  let cum = 0;
+  const parts = segments.map((seg, i) => {
+    const val = cum;
+    cum += seg.lift;
+    return `段${i + 1}起点: ${val.toFixed(1)}mm`;
+  });
+  parts.push(`最终: ${cum.toFixed(1)}mm`);
+  cumDispEl.textContent = '累计位移 Cumulative S: ' + parts.join(' → ');
+}
+
+function onSegmentChange() {
+  // Sync start angles
+  for (let i = 1; i < segments.length; i++) {
+    segments[i].start = segments[i - 1].end;
+  }
+  buildSegmentTable();
+  updatePipeline();
+}
+
+function addSegment() {
+  const lastEnd = segments.length > 0 ? segments[segments.length - 1].end : 0;
+  if (lastEnd >= 360) {
+    validationArea.innerHTML = '<span class="error">角度已覆盖 0-360°，无法再添加段</span>';
+    return;
+  }
+  const remaining = 360 - lastEnd;
+  const newEnd = Math.min(360, lastEnd + Math.max(30, remaining / 2));
+  segments.push({
+    start: lastEnd,
+    end: newEnd,
+    lift: 0,
+    law: 'dwell',
+    customExpr: '',
+  });
+  onSegmentChange();
+}
+
+function removeLastSegment() {
+  if (segments.length <= 1) return;
+  segments.pop();
+  segments[segments.length - 1].end = 360;
+  onSegmentChange();
+}
+
+function resetSegments() {
+  segments = JSON.parse(JSON.stringify(DEFAULT_SEGMENTS));
+  onSegmentChange();
+}
+
+// ============================================================
+// F2. VALIDATION PIPELINE
+// ============================================================
+
+function validateParams() {
+  const rb = parseFloat(document.getElementById('rb').value) || 0;
+  const e = parseFloat(document.getElementById('ecc').value) || 0;
+  const rr = parseFloat(document.getElementById('rr').value) || 0;
+  const errors = [];
+  const warnings = [];
+
+  if (rb <= 0) errors.push('基圆半径必须大于 0 (rb > 0)');
+  if (e < 0) errors.push('偏心距不能为负 (e >= 0)');
+  if (rr < 0) errors.push('滚子半径不能为负 (rr >= 0)');
+  if (rb > 0 && e >= rb + rr) {
+    errors.push(`偏心距过大：e (${e}) 必须小于 rb+rr (${(rb + rr).toFixed(1)})`);
+  }
+
+  // Validate segment angles
+  if (segments.length === 0) {
+    errors.push('至少需要一个分段');
+  } else {
+    const totalAngle = segments[segments.length - 1].end - segments[0].start;
+    if (Math.abs(totalAngle - 360) > 0.1) {
+      errors.push(`分段角度总和必须为 360°（当前: ${totalAngle.toFixed(1)}°）`);
+    }
+    for (const seg of segments) {
+      if (seg.end <= seg.start) {
+        errors.push(`分段 ${seg.start}°-${seg.end}° 终止角必须大于起始角`);
+      }
+    }
+  }
+
+  // Validate custom expressions
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    if (seg.law === 'custom') {
+      const compiled = compileCustomExpr(seg.customExpr);
+      if (!compiled) {
+        errors.push(`段 ${i + 1}: 自定义表达式语法错误`);
+      } else {
+        if (Math.abs(compiled.v0) > 0.01 || Math.abs(compiled.v1 - 1) > 0.01) {
+          warnings.push(`段 ${i + 1}: f(0)=${compiled.v0.toFixed(3)}, f(1)=${compiled.v1.toFixed(3)}，建议 f(0)=0, f(1)=1`);
+        }
+      }
+    }
+  }
+
+  return { rb, e, rr, errors, warnings };
+}
+
+function updatePipeline() {
+  const { rb, e, rr, errors, warnings } = validateParams();
+
+  // Display validation messages
+  let msgHtml = '';
+  if (errors.length > 0) {
+    msgHtml += errors.map(er => '<div class="error">❌ ' + er + '</div>').join('');
+  }
+  if (warnings.length > 0) {
+    msgHtml += warnings.map(w => '<div class="warning">⚠ ' + w + '</div>').join('');
+  }
+  validationArea.innerHTML = msgHtml;
+
+  // Compute geometry
+  let geometry;
+  try {
+    geometry = computeCamGeometry(rb, e, rr, segments, clockwise);
+  } catch (err) {
+    console.error('Geometry computation error:', err);
+    return;
+  }
+
+  // Render
+  const options = {
+    showPitch: document.getElementById('showPitch').checked,
+    showBaseCircle: document.getElementById('showBaseCircle').checked,
+  };
+
+  const camCanvas = document.getElementById('camCanvas');
+  renderCamCanvas(camCanvas, geometry, rb, options);
+
+  const dispCanvas = document.getElementById('dispCanvas');
+  renderDispCanvas(dispCanvas, geometry, segments);
+
+  // Pressure angle warnings
+  if (geometry.pressureWarnings.length > 0) {
+    const pw = geometry.pressureWarnings;
+    let pwMsg = '<div class="warning">⚠ 压力角超过 30° (Pressure angle > 30°)：';
+    pwMsg += pw.slice(0, 3).map(w => `θ≈${w.thetaDeg}°(α=${w.alpha}°)`).join(', ');
+    if (pw.length > 3) pwMsg += ` 等 ${pw.length} 处`;
+    pwMsg += '。建议增大基圆半径或调整运动规律。</div>';
+    validationArea.innerHTML += pwMsg;
+  }
+
+  if (errors.length === 0 && geometry.pressureWarnings.length === 0) {
+    const rrLabel = rr <= 0.001 ? '尖顶从动件 (Knife-edge)' : `滚子从动件 r_r=${rr}mm (Roller follower)`;
+    validationArea.innerHTML = '<div class="info">✓ 参数有效 &mdash; ' + rrLabel + '</div>';
+  }
+}
+
+// ============================================================
+// G. INITIALIZATION
+// ============================================================
+
+// Debounce helper
+let debounceTimer = null;
+function debouncedUpdate() {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(updatePipeline, 80);
+}
+
+// Attach listeners to parameter inputs
+document.getElementById('rb').addEventListener('input', debouncedUpdate);
+document.getElementById('ecc').addEventListener('input', debouncedUpdate);
+document.getElementById('rr').addEventListener('input', debouncedUpdate);
+document.getElementById('showPitch').addEventListener('change', debouncedUpdate);
+document.getElementById('showBaseCircle').addEventListener('change', debouncedUpdate);
+document.getElementById('clockwiseBtn').addEventListener('click', () => {
+  clockwise = !clockwise;
+  const btn = document.getElementById('clockwiseBtn');
+  btn.textContent = clockwise ? '🔄 顺时针 CW' : '🔄 逆时针 CCW';
+  updatePipeline();
+});
+
+document.getElementById('addSegment').addEventListener('click', () => { addSegment(); });
+document.getElementById('removeSegment').addEventListener('click', () => { removeLastSegment(); });
+document.getElementById('resetSegments').addEventListener('click', () => { resetSegments(); });
+
+// Handle window resize
+window.addEventListener('resize', debouncedUpdate);
+
+// Initial build
+buildSegmentTable();
+updatePipeline();
+</script>
+
+</body>
+</html>
