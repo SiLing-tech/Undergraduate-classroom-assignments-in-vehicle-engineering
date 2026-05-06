@@ -223,8 +223,12 @@ header .subtitle {
   }
   .control-panel { flex: auto; }
 }
-</style>
-</head>
+
+	/* Export button */
+	#exportPdfBtn:hover { background: #1565c0; }
+	#exportPdfBtn:disabled { background: #999; cursor: not-allowed; }
+	</style>
+	</head>
 <body>
 
 <header>
@@ -293,6 +297,26 @@ header .subtitle {
       <h3>显示选项 Display Options</h3>
       <label><input type="checkbox" id="showPitch" checked> 显示节曲线 Show Pitch Curve</label>
       <label><input type="checkbox" id="showBaseCircle" checked> 显示基圆 Show Base Circle</label>
+
+    <hr style="border-color:#e8e0ce; margin: 10px 0;">
+
+    <h3>导出 Export</h3>
+    <div class="param-row">
+      <label for="angleStep">角度步长 Angle Step:</label>
+      <input type="number" id="angleStep" value="5" min="0.5" max="360" step="0.5">
+      <span class="unit">&deg;</span>
+    </div>
+    <div style="font-size:0.72rem;color:#999;margin:-4px 0 4px 0;">
+      导出轮廓点采样间隔。值越小点数越多。
+      <br>Sampling interval for exported points. Smaller = more rows.
+    </div>
+    <button id="exportPdfBtn"
+      style="width:100%; padding:8px 0; margin-top:6px;
+             border:none; border-radius:5px; cursor:pointer;
+             font-family:inherit; font-size:0.85rem;
+             background:#1976d2; color:#fff;">
+      📄 导出 PDF Export PDF
+    </button>
     </div>
 
     <div class="validation-area" id="validationArea"></div>
@@ -327,7 +351,9 @@ header .subtitle {
   </div>
 </div>
 
-<script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.7.1/jspdf.plugin.autotable.min.js"></script>
+	<script>
 // ============================================================
 // A. GLOBAL STATE
 // ============================================================
@@ -340,6 +366,8 @@ const DEFAULT_SEGMENTS = [
 
 let segments = JSON.parse(JSON.stringify(DEFAULT_SEGMENTS));
 let clockwise = false; // 默认逆时针
+let lastGeometry = null;
+let angleStepDeg = 5;
 
 // ============================================================
 // B. MOTION LAW DEFINITIONS
@@ -1176,6 +1204,7 @@ function updatePipeline() {
     console.error('Geometry computation error:', err);
     return;
   }
+  lastGeometry = geometry;
 
   // Render
   const options = {
@@ -1206,6 +1235,426 @@ function updatePipeline() {
 }
 
 // ============================================================
+// F3. PDF EXPORT
+// ============================================================
+
+function sampleContourPoints(profilePoints, pitchPoints, stepDeg) {
+  const stepIndex = Math.round(stepDeg / 0.5);
+  const totalAngles = Math.floor(360 / stepDeg);
+  const sampled = [];
+  for (let i = 0; i < totalAngles; i++) {
+    const thetaDeg = i * stepDeg;
+    const idx = Math.round(thetaDeg / 0.5) % profilePoints.length;
+    const prof = profilePoints[idx];
+    const pitch = pitchPoints ? pitchPoints[idx] : null;
+    sampled.push({
+      thetaDeg: prof.thetaDeg,
+      profileX: prof.x,
+      profileY: prof.y,
+      pitchX: pitch ? pitch.x : null,
+      pitchY: pitch ? pitch.y : null,
+    });
+  }
+  return sampled;
+}
+
+function exportPDF() {
+  if (!window.jspdf) {
+    document.getElementById('validationArea').innerHTML =
+      '<div class="error">❌ PDF 库加载失败，请检查网络连接后刷新页面。jsPDF library failed to load. Check network and refresh.</div>';
+    return;
+  }
+  if (!lastGeometry) {
+    document.getElementById('validationArea').innerHTML =
+      '<div class="warning">⚠ 请先调整参数生成轮廓曲线。Adjust parameters to generate cam profile first.</div>';
+    return;
+  }
+
+  const btn = document.getElementById('exportPdfBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ 生成中... Generating...';
+
+  setTimeout(function () {
+    try {
+      generatePDFDocument();
+      document.getElementById('validationArea').innerHTML =
+        '<div class="info">✓ PDF 已导出 PDF exported successfully.</div>';
+    } catch (err) {
+      console.error('PDF generation error:', err);
+      document.getElementById('validationArea').innerHTML =
+        '<div class="error">❌ PDF 生成失败: ' + err.message + '</div>';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '📄 导出 PDF Export PDF';
+    }
+  }, 50);
+}
+
+function generatePDFDocument() {
+  const param = validateParams();
+  const geo = lastGeometry;
+  const segs = segments;
+  const sampled = sampleContourPoints(geo.profilePoints, geo.pitchPoints, angleStepDeg);
+
+  const doc = new jspdf.jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4'
+  });
+
+  const pageW = 210;
+  const pageH = 297;
+  const margin = 15;
+  const contentW = pageW - 2 * margin;
+  let curY = margin;
+
+  // Title
+  doc.setFontSize(16);
+  doc.setTextColor(33, 33, 33);
+  doc.text('Cam Profile Data', margin, curY);
+  curY += 8;
+
+  doc.setFontSize(9);
+  doc.setTextColor(120, 120, 120);
+  doc.text(
+    'Cam Profile Data  |  Generated: ' + new Date().toISOString().slice(0, 19).replace('T', ' '),
+    margin, curY
+  );
+  curY += 4;
+
+  doc.setDrawColor(200, 200, 200);
+  doc.setLineWidth(0.3);
+  doc.line(margin, curY, pageW - margin, curY);
+  curY += 6;
+
+  // Basic parameters
+  doc.setFontSize(12);
+  doc.setTextColor(33, 33, 33);
+  doc.text('Basic Parameters', margin, curY);
+  curY += 6;
+
+  doc.autoTable({
+    startY: curY,
+    margin: { left: margin, right: margin },
+    tableWidth: contentW,
+    styles: {
+      fontSize: 9,
+      cellPadding: 2,
+      lineColor: [180, 180, 180],
+      lineWidth: 0.2,
+    },
+    headStyles: {
+      fillColor: [245, 240, 229],
+      textColor: [100, 100, 100],
+      fontStyle: 'bold',
+      halign: 'center',
+    },
+    bodyStyles: { textColor: [50, 50, 50] },
+    columnStyles: {
+      0: { cellWidth: 60, halign: 'left' },
+      1: { cellWidth: 50, halign: 'center' },
+      2: { cellWidth: 30, halign: 'center' },
+      3: { cellWidth: 40, halign: 'center' },
+    },
+    head: [['Parameter', 'Symbol', 'Value', 'Unit']],
+    body: [
+      ['Base Circle Radius', 'rb', param.rb.toFixed(1), 'mm'],
+      ['Eccentricity', 'e', param.e.toFixed(1), 'mm'],
+      ['Roller Radius', 'rr', param.rr.toFixed(1), 'mm'],
+      ['Rotation Direction', '', (clockwise ? 'Clockwise (CW)' : 'Counter-Clockwise (CCW)'), ''],
+      ['Number of Segments', '', String(segs.length), ''],
+      ['Total Lift', '', segs.reduce(function (s, seg) { return s + seg.lift; }, 0).toFixed(1), 'mm'],
+    ],
+  });
+
+  curY = doc.lastAutoTable.finalY + 8;
+
+  // Segment details
+  doc.setFontSize(12);
+  doc.setTextColor(33, 33, 33);
+  doc.text('Motion Segments', margin, curY);
+  curY += 6;
+
+  const segBody = segs.map(function (seg, i) {
+    let lawName = seg.law === 'custom'
+      ? ('Custom: ' + (seg.customExpr || '(empty)'))
+      : (MOTION_LAWS[seg.law] ? MOTION_LAWS[seg.law].name.replace(/^[^\x00-\x7F]+\s*/, '') : seg.law);
+    return [
+      String(i + 1),
+      seg.start.toFixed(1) + '°',
+      seg.end.toFixed(1) + '°',
+      (seg.lift >= 0 ? '+' : '') + seg.lift.toFixed(1),
+      lawName,
+    ];
+  });
+
+  doc.autoTable({
+    startY: curY,
+    margin: { left: margin, right: margin },
+    tableWidth: contentW,
+    styles: {
+      fontSize: 8.5,
+      cellPadding: 1.5,
+      lineColor: [180, 180, 180],
+      lineWidth: 0.2,
+    },
+    headStyles: {
+      fillColor: [245, 240, 229],
+      textColor: [100, 100, 100],
+      fontStyle: 'bold',
+      halign: 'center',
+    },
+    bodyStyles: { textColor: [50, 50, 50] },
+    columnStyles: {
+      0: { cellWidth: 10, halign: 'center' },
+      1: { cellWidth: 30, halign: 'center' },
+      2: { cellWidth: 30, halign: 'center' },
+      3: { cellWidth: 30, halign: 'center' },
+      4: { cellWidth: 80, halign: 'left' },
+    },
+    head: [['#', 'Start', 'End', 'Lift (mm)', 'Motion Law']],
+    body: segBody,
+  });
+
+  curY = doc.lastAutoTable.finalY + 8;
+
+  // Contour points table
+  doc.setFontSize(12);
+  doc.setTextColor(33, 33, 33);
+  doc.text(
+    'Cam Profile Points (step = ' + angleStepDeg.toFixed(1) + '°, ' + sampled.length + ' points)',
+    margin, curY
+  );
+  curY += 6;
+
+  const hasPitch = geo.pitchPoints && geo.pitchPoints.length > 0;
+  let headRow, bodyRows;
+
+  if (hasPitch) {
+    headRow = ['Angle (°)', 'Profile X (mm)', 'Profile Y (mm)', 'Pitch X (mm)', 'Pitch Y (mm)'];
+    bodyRows = sampled.map(function (p) {
+      return [
+        p.thetaDeg.toFixed(1),
+        p.profileX.toFixed(3),
+        p.profileY.toFixed(3),
+        p.pitchX.toFixed(3),
+        p.pitchY.toFixed(3),
+      ];
+    });
+  } else {
+    headRow = ['Angle (°)', 'Profile X (mm)', 'Profile Y (mm)'];
+    bodyRows = sampled.map(function (p) {
+      return [
+        p.thetaDeg.toFixed(1),
+        p.profileX.toFixed(3),
+        p.profileY.toFixed(3),
+      ];
+    });
+  }
+
+  doc.autoTable({
+    startY: curY,
+    margin: { left: margin, right: margin },
+    tableWidth: contentW,
+    styles: {
+      fontSize: 7.5,
+      cellPadding: 1.2,
+      lineColor: [180, 180, 180],
+      lineWidth: 0.15,
+      overflow: 'linebreak',
+    },
+    headStyles: {
+      fillColor: [230, 230, 230],
+      textColor: [60, 60, 60],
+      fontStyle: 'bold',
+      halign: 'center',
+    },
+    bodyStyles: {
+      textColor: [50, 50, 50],
+      halign: 'center',
+    },
+    alternateRowStyles: { fillColor: [250, 250, 247] },
+    columnStyles: (function () {
+      if (hasPitch) {
+        return {
+          0: { cellWidth: 25 },
+          1: { cellWidth: 38.75 },
+          2: { cellWidth: 38.75 },
+          3: { cellWidth: 38.75 },
+          4: { cellWidth: 38.75 },
+        };
+      } else {
+        return {
+          0: { cellWidth: 30 },
+          1: { cellWidth: 75 },
+          2: { cellWidth: 75 },
+        };
+      }
+    })(),
+    head: [headRow],
+    body: bodyRows,
+    didDrawPage: function () {
+      doc.setFontSize(8);
+      doc.setTextColor(150, 150, 150);
+      doc.text(
+        'Page ' + doc.internal.getNumberOfPages(),
+        pageW - margin,
+        pageH - 10,
+        { align: 'right' }
+      );
+    },
+  });
+
+  // ============================================================
+  // Polar Chart Page
+  // ============================================================
+  doc.addPage();
+
+  const polarCx = 105;
+  const polarCy = 145;
+  const polarR = 85;
+  const maxR = geo.maxR;
+
+  function polarToCanvas(r, thetaDeg) {
+    const thetaRad = thetaDeg * Math.PI / 180;
+    const rr = (r / maxR) * polarR;
+    return [
+      polarCx + rr * Math.cos(thetaRad),
+      polarCy - rr * Math.sin(thetaRad)
+    ];
+  }
+
+  // Draw polar grid
+  doc.setDrawColor(200, 200, 200);
+  doc.setLineWidth(0.2);
+
+  const nCircles = 5;
+  for (let i = 1; i <= nCircles; i++) {
+    const r = (maxR / nCircles) * i;
+    const rr = (r / maxR) * polarR;
+    doc.circle(polarCx, polarCy, rr);
+    doc.setFontSize(7);
+    doc.setTextColor(140, 140, 140);
+    doc.text(r.toFixed(0), polarCx + rr + 1, polarCy + 3);
+    doc.setDrawColor(200, 200, 200);
+  }
+
+  // Radial lines every 30 degrees
+  for (let deg = 0; deg < 360; deg += 30) {
+    const rad = deg * Math.PI / 180;
+    const ex = polarCx + polarR * Math.cos(rad);
+    const ey = polarCy - polarR * Math.sin(rad);
+    doc.line(polarCx, polarCy, ex, ey);
+
+    const lr = polarR + 6;
+    const lx = polarCx + lr * Math.cos(rad);
+    const ly = polarCy - lr * Math.sin(rad);
+    doc.setFontSize(8);
+    doc.setTextColor(100, 100, 100);
+    doc.text(deg + '°', lx, ly, { align: 'center' });
+    doc.setDrawColor(200, 200, 200);
+  }
+
+  // Axis cross
+  doc.setDrawColor(180, 180, 180);
+  doc.setLineWidth(0.3);
+  doc.line(polarCx - polarR, polarCy, polarCx + polarR, polarCy);
+  doc.line(polarCx, polarCy - polarR, polarCx, polarCy + polarR);
+
+  // Center dot
+  doc.setFillColor(80, 80, 80);
+  doc.circle(polarCx, polarCy, 1.5, 'F');
+
+  // Plot profile points (red)
+  doc.setFillColor(192, 57, 43);
+  for (let i = 0; i < sampled.length; i++) {
+    const p = sampled[i];
+    const r = Math.sqrt(p.profileX * p.profileX + p.profileY * p.profileY);
+    if (r < 0.001) continue;
+    const pp = polarToCanvas(r, p.thetaDeg);
+    doc.circle(pp[0], pp[1], 0.6, 'F');
+  }
+
+  // Plot pitch points (blue) if roller follower
+  const _hasPitch = geo.pitchPoints && geo.pitchPoints.length > 0;
+  const _rrParam = parseFloat(document.getElementById('rr').value) || 0;
+  if (_hasPitch && _rrParam > 0.001) {
+    doc.setFillColor(52, 152, 219);
+    for (let i = 0; i < sampled.length; i++) {
+      const p = sampled[i];
+      if (p.pitchX === null) continue;
+      const r = Math.sqrt(p.pitchX * p.pitchX + p.pitchY * p.pitchY);
+      if (r < 0.001) continue;
+      const pp = polarToCanvas(r, p.thetaDeg);
+      doc.circle(pp[0], pp[1], 0.4, 'F');
+    }
+  }
+
+  // Polar chart title
+  doc.setFontSize(14);
+  doc.setTextColor(33, 33, 33);
+  doc.text('Cam Profile — Polar Plot', polarCx, 20, { align: 'center' });
+
+  doc.setFontSize(9);
+  doc.setTextColor(120, 120, 120);
+  doc.text(
+    'Sampled at ' + angleStepDeg.toFixed(1) + '° intervals, ' + sampled.length + ' points  |  maxR = ' + maxR.toFixed(1) + ' mm',
+    polarCx, 28, { align: 'center' }
+  );
+
+  // Legend box
+  const legX = 158;
+  const legY = 45;
+  doc.setFontSize(8);
+  doc.setTextColor(60, 60, 60);
+
+  doc.setFillColor(192, 57, 43);
+  doc.circle(legX, legY, 2.2, 'F');
+  doc.text('Cam Profile', legX + 5, legY + 1);
+
+  if (_hasPitch && _rrParam > 0.001) {
+    doc.setFillColor(52, 152, 219);
+    doc.circle(legX, legY + 7, 1.8, 'F');
+    doc.text('Pitch Curve', legX + 5, legY + 8);
+  }
+
+  // Base circle on polar chart
+  const _rb = parseFloat(document.getElementById('rb').value) || 40;
+  if (_rb > 0) {
+    const baseR = (_rb / maxR) * polarR;
+    doc.setDrawColor(150, 150, 150);
+    doc.setLineWidth(0.4);
+    doc.setLineDash([3, 3]);
+    doc.circle(polarCx, polarCy, baseR);
+    doc.setLineDash([]);
+    doc.setFontSize(7);
+    doc.setTextColor(140, 140, 140);
+    doc.text('rb=' + _rb.toFixed(0), polarCx + baseR + 2, polarCy - 3);
+  }
+
+  // Page number for polar page
+  doc.setFontSize(8);
+  doc.setTextColor(150, 150, 150);
+  doc.text(
+    'Page ' + doc.internal.getNumberOfPages(),
+    pageW - margin,
+    pageH - 10,
+    { align: 'right' }
+  );
+
+  // Footer
+  doc.setFontSize(7);
+  doc.setTextColor(160, 160, 160);
+  doc.text(
+    'Generated by Cam Profile Generator',
+    margin,
+    pageH - 10
+  );
+
+  doc.save('cam_profile_data.pdf');
+}
+
+// ============================================================
 // G. INITIALIZATION
 // ============================================================
 
@@ -1232,6 +1681,13 @@ document.getElementById('clockwiseBtn').addEventListener('click', () => {
 document.getElementById('addSegment').addEventListener('click', () => { addSegment(); });
 document.getElementById('removeSegment').addEventListener('click', () => { removeLastSegment(); });
 document.getElementById('resetSegments').addEventListener('click', () => { resetSegments(); });
+
+document.getElementById('angleStep').addEventListener('input', function () {
+  angleStepDeg = parseFloat(this.value) || 5;
+  if (angleStepDeg < 0.5) angleStepDeg = 0.5;
+  if (angleStepDeg > 360) angleStepDeg = 360;
+});
+document.getElementById('exportPdfBtn').addEventListener('click', exportPDF);
 
 // Handle window resize
 window.addEventListener('resize', debouncedUpdate);
